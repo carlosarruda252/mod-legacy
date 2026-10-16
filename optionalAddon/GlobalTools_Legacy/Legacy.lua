@@ -1,111 +1,84 @@
 --[[
-    GlobalTools_Legacy - Sistema Legacy (mod-legacy) como addon INDIVIDUAL
-    WoW 3.3.5a (AzerothCore con mod-legacy)
+    GlobalTools_Legacy - Legacy system (mod-legacy) as a STANDALONE addon
+    WoW 3.3.5a (AzerothCore with mod-legacy)
 
-    Funciona de dos formas, sin cambiar nada:
-      * Con el hub GlobalTools instalado: se integra solo (pestaña "Sistema Legacy",
-        categoría en el menú desplegable y sincronización con /gt sync).
-      * Sin el hub: abre su propia ventana con /glegacy.
+    Works two ways, with no configuration:
+      * With the GlobalTools hub installed: it integrates on its own (a "Legacy
+        System" tab, a dropdown-menu category and syncing via /gt sync).
+      * Without the hub: it opens its own window with /glegacy.
 
-    Todo lo de Legacy vive en este archivo: datos, lectura del chat, pestaña, menú y comandos.
-    Árboles y nodos están en L.TREES (una sola tabla para pestaña y menú).
+    All player-facing text is in Locale.lua (loaded first); this file holds the
+    logic only. The tree/node structure is in L.TREES; the matching text lives in
+    L.T.trees keyed by the same ids.
+
+    NOTE: the chat patterns in L:ProcessChat match the SERVER's responses, which
+    are English, so they stay in English on purpose.
 ]]
 
 local ADDON = "GlobalTools_Legacy"
 
 GlobalToolsLegacy = GlobalToolsLegacy or {}
 local L = GlobalToolsLegacy
+local T = L.T  -- active translation table, built in Locale.lua
 
 -- ============================================================================
--- DATOS EN VIVO
+-- LIVE DATA
 -- ============================================================================
 L.data = {
     points = 0,
     ranks = {
-        [1] = { [1] = 0, [2] = 0, [3] = 0 }, -- Aventura
-        [2] = { [1] = 0, [2] = 0, [3] = 0 }, -- Profesiones
-        [3] = { [1] = 0, [2] = 0, [3] = 0 }, -- Recursos
+        [1] = { [1] = 0, [2] = 0, [3] = 0 }, -- Adventure
+        [2] = { [1] = 0, [2] = 0, [3] = 0 }, -- Professions
+        [3] = { [1] = 0, [2] = 0, [3] = 0 }, -- Resourcefulness
     },
     loaded = false,
 }
-if GlobalTools then GlobalTools.LegacyData = L.data end -- compatibilidad con código antiguo
+if GlobalTools then GlobalTools.LegacyData = L.data end -- compatibility with older code
 
 local ICON_MAIN = "Interface\\Icons\\Spell_Holy_ChampionsGrace"
 
 -- ============================================================================
--- ÁRBOLES Y NODOS (cada nodo: .legacy buy <árbol> <nodo>)
+-- TREES AND NODES (structure only; text comes from L.T.trees)
+-- Each node is bought with: .legacy buy <tree> <node>
 -- ============================================================================
 L.TREES = {
     {
         idx = 1, id = "tree_adventure",
-        tabTitle = "|cff33ff33Árbol 1: Aventura|r",
-        menuName = "Árbol: Aventura (Velocidad y XP)",
-        menuDesc = "Mejoras de velocidad de movimiento y bonificación de experiencia.",
         icon = "Interface\\Icons\\Ability_Rogue_Sprint",
         nodes = {
-            { id = "leg_adv_1", name = "Swift Boots", icon = "Interface\\Icons\\Ability_Rogue_Sprint",
-              tabDesc = "+Velocidad de Movimiento pasiva.",
-              menuName = "Swift Boots (+Velocidad de Mov.)",
-              menuDesc = "Aumenta la velocidad de movimiento pasiva de tu personaje." },
-            { id = "leg_adv_2", name = "Quick Study", icon = "Interface\\Icons\\Spell_Holy_BorrowedTime",
-              tabDesc = "+XP de todas las fuentes de juego.",
-              menuName = "Quick Study (+XP Global)",
-              menuDesc = "Incrementa la experiencia obtenida de todas las fuentes." },
-            { id = "leg_adv_3", name = "Wanderlust", icon = "Interface\\Icons\\Ability_Spy",
-              tabDesc = "+XP adicional al explorar zonas.",
-              menuName = "Wanderlust (+XP Exploración)",
-              menuDesc = "Bonus de experiencia al descubrir nuevas zonas (se acumula con Quick Study)." },
+            { id = "leg_adv_1", name = "Swift Boots",  icon = "Interface\\Icons\\Ability_Rogue_Sprint" },
+            { id = "leg_adv_2", name = "Quick Study",  icon = "Interface\\Icons\\Spell_Holy_BorrowedTime" },
+            { id = "leg_adv_3", name = "Wanderlust",   icon = "Interface\\Icons\\Ability_Spy" },
         },
     },
     {
         idx = 2, id = "tree_professions",
-        tabTitle = "|cff33ccffÁrbol 2: Profesiones|r",
-        menuName = "Árbol: Profesiones (Subida y Crafteo)",
-        menuDesc = "Mejoras para recolección y creación de objetos.",
         icon = "Interface\\Icons\\Trade_BlackSmithing",
         nodes = {
-            { id = "leg_prof_1", name = "Steady Hands", icon = "Interface\\Icons\\INV_Pick_02",
-              tabDesc = "+Probabilidad de subir skill en recolección.",
-              menuName = "Steady Hands (+Skill Recolección)",
-              menuDesc = "Aumenta la probabilidad de subir habilidad en Minería, Herboristería y Desuello." },
-            { id = "leg_prof_2", name = "Master Crafter", icon = "Interface\\Icons\\Trade_BlackSmithing",
-              tabDesc = "+Probabilidad de subir skill en crafteo.",
-              menuName = "Master Crafter (+Skill Crafteo)",
-              menuDesc = "Aumenta la probabilidad de subir nivel en profesiones de crafteo." },
-            { id = "leg_prof_3", name = "Bountiful Harvest", icon = "Interface\\Icons\\Spell_Nature_NatureBlessing",
-              tabDesc = "Nodo reservado en v1 (bloqueado).",
-              menuName = "|cff808080Bountiful Harvest (Bloqueado)|r",
-              menuDesc = "Nodo reservado para futuras actualizaciones del servidor.",
-              locked = true },
+            { id = "leg_prof_1", name = "Steady Hands",      icon = "Interface\\Icons\\INV_Pick_02" },
+            { id = "leg_prof_2", name = "Master Crafter",    icon = "Interface\\Icons\\Trade_BlackSmithing" },
+            { id = "leg_prof_3", name = "Bountiful Harvest", icon = "Interface\\Icons\\Spell_Nature_NatureBlessing", locked = true },
         },
     },
     {
         idx = 3, id = "tree_resources",
-        tabTitle = "|cffffd100Árbol 3: Recursos|r",
-        menuName = "Árbol: Recursos (Oro y Descuentos)",
-        menuDesc = "Más oro de criaturas y descuentos en vendedores y reparaciones.",
         icon = "Interface\\Icons\\INV_Misc_Coin_01",
         nodes = {
-            { id = "leg_res_1", name = "Grave Robber", icon = "Interface\\Icons\\INV_Misc_Coin_01",
-              tabDesc = "+Oro saqueado de criaturas y cofres.",
-              menuName = "Grave Robber (+Oro de Botín)",
-              menuDesc = "Aumenta la cantidad de monedas obtenidas de criaturas y cofres." },
-            { id = "leg_res_2", name = "Haggler", icon = "Interface\\Icons\\INV_Misc_Bag_07_Black",
-              tabDesc = "Descuento en compras a vendedores.",
-              menuName = "Haggler (Descuento Vendedores)",
-              menuDesc = "Descuento en compras a vendedores de facción." },
-            { id = "leg_res_3", name = "Frugal Repairs", icon = "Interface\\Icons\\INV_Hammer_15",
-              tabDesc = "Descuento adicional en reparación de equipo.",
-              menuName = "Frugal Repairs (Descuento Reparación)",
-              menuDesc = "Descuento adicional en el coste de reparar equipo." },
+            { id = "leg_res_1", name = "Grave Robber",   icon = "Interface\\Icons\\INV_Misc_Coin_01" },
+            { id = "leg_res_2", name = "Haggler",        icon = "Interface\\Icons\\INV_Misc_Bag_07_Black" },
+            { id = "leg_res_3", name = "Frugal Repairs", icon = "Interface\\Icons\\INV_Hammer_15" },
         },
     },
 }
 
+-- Localized text for a tree / node, by id
+local function TreeT(tree) return T.trees[tree.id] end
+local function NodeT(tree, node) return T.trees[tree.id].nodes[node.id] end
+
 local function BuyCmd(tree, node) return ".legacy buy " .. tree.idx .. " " .. node end
 
 -- ============================================================================
--- CONFIGURACIÓN PROPIA (SavedVariables: GlobalToolsLegacyDB)
+-- OWN SETTINGS (SavedVariables: GlobalToolsLegacyDB)
 -- ============================================================================
 local function DB()
     GlobalToolsLegacyDB = GlobalToolsLegacyDB or {}
@@ -113,7 +86,7 @@ local function DB()
     return GlobalToolsLegacyDB
 end
 
--- ¿Se oculta del chat lo que responde el servidor? Con el hub se usa su opción general.
+-- Should the server's answers be hidden from chat? With the hub, use its option.
 function L:ShouldHide()
     if GlobalToolsDB and GlobalToolsDB.hideChatMessages ~= nil then
         return GlobalToolsDB.hideChatMessages
@@ -122,12 +95,12 @@ function L:ShouldHide()
 end
 
 -- ============================================================================
--- ENVÍO DE COMANDOS Y CONFIRMACIONES
+-- COMMAND SENDING AND CONFIRMATIONS
 -- ============================================================================
 StaticPopupDialogs["GTLEGACY_CONFIRM"] = {
     text = "%s",
-    button1 = "Aceptar",
-    button2 = "Cancelar",
+    button1 = T.CONFIRM_ACCEPT,
+    button2 = T.CONFIRM_CANCEL,
     OnAccept = function(self, data)
         if data then L:Send(data) end
     end,
@@ -144,7 +117,7 @@ end
 function L:Send(cmd)
     if not cmd or cmd == "" then return end
     if UnitAffectingCombat("player") then
-        UIErrorsFrame:AddMessage("|cffff2020[Legacy] Advertencia: Estás en combate.|r", 1.0, 0.2, 0.2, 1.0)
+        UIErrorsFrame:AddMessage(T.COMBAT_WARN, 1.0, 0.2, 0.2, 1.0)
     end
     PlaySound("igMainMenuOptionCheckBoxOn")
     SendChatMessage(cmd, "SAY")
@@ -159,13 +132,13 @@ function L:Run(cmd, confirm)
     end
 end
 
--- Pide al servidor los puntos y rangos (la respuesta la lee ProcessChat)
+-- Ask the server for points and ranks (the answer is read by ProcessChat)
 function L:Sync()
     SendChatMessage(".legacy", "SAY")
 end
 
--- Tras una mejora o reembolso se vuelve a sincronizar, pero una sola vez
--- (el mismo mensaje puede llegar por el filtro y por el evento)
+-- After a buy or refund, re-sync once (the same message can arrive both via the
+-- chat filter and via the event)
 local lastTrigger = 0
 local function TriggerSync()
     local now = GetTime()
@@ -175,15 +148,15 @@ local function TriggerSync()
 end
 
 -- ============================================================================
--- LECTURA DE LAS RESPUESTAS DEL SERVIDOR
--- Devuelve true si la línea es de Legacy (para poder ocultarla del chat)
+-- READING THE SERVER'S RESPONSES (English, see note at the top)
+-- Returns true if the line is a Legacy line (so it can be hidden from chat)
 -- ============================================================================
 function L:ProcessChat(msg)
     if not msg then return false end
     local clean = msg:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
 
-    -- 1. Reembolso: "[Legacy] 3 point(s) refunded to the account pool."
-    --    (va antes que "puntos disponibles": las dos empiezan igual y se confundían)
+    -- 1. Refund: "[Legacy] 3 point(s) refunded to the account pool."
+    --    (checked before "points available": both start the same and clashed)
     if clean:match("%[Legacy%]%s*(%d+)%s*point%(s%) refunded") then
         for t = 1, 3 do
             for n = 1, 3 do L.data.ranks[t][n] = 0 end
@@ -193,13 +166,13 @@ function L:ProcessChat(msg)
         return false
     end
 
-    -- 2. Mejora exitosa: "[Legacy] Swift Boots raised to rank 2: +move speed."
+    -- 2. Successful buy: "[Legacy] Swift Boots raised to rank 2: +move speed."
     if clean:match("%[Legacy%]%s*(.-)%s*raised to rank%s*(%d+)") then
         TriggerSync()
-        return false -- dejar ver el mensaje de felicitación
+        return false -- let the congratulation message show
     end
 
-    -- 3. Puntos disponibles: "[Legacy] 5 point(s) available"
+    -- 3. Points available: "[Legacy] 5 point(s) available"
     local pts = clean:match("%[Legacy%]%s*(%d+)%s*point")
     if pts then
         L.data.points = tonumber(pts)
@@ -208,7 +181,7 @@ function L:ProcessChat(msg)
         return true
     end
 
-    -- 4. Rango de nodo: "  1.1 Swift Boots - +move speed (rank 1/3, next rank costs 2)"
+    -- 4. Node rank: "  1.1 Swift Boots - +move speed (rank 1/3, next rank costs 2)"
     local tree, node, rank = clean:match("^%s*(%d+)%.(%d+)%s+.-%(rank%s+(%d+)/")
     if tree and node and rank then
         tree, node, rank = tonumber(tree), tonumber(node), tonumber(rank)
@@ -218,7 +191,7 @@ function L:ProcessChat(msg)
         return true
     end
 
-    -- Encabezados y ayuda de legacy (se ocultan si el silencio está activado)
+    -- Legacy headers and help (hidden when the silence option is on)
     if clean:find("^%-%- Adventure %-%-") or clean:find("^%-%- Professions %-%-")
         or clean:find("^%-%- Resourcefulness %-%-") or clean:find("Use '%.legacy buy") then
         return true
@@ -235,15 +208,15 @@ ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(self, event, msg, ..
 end)
 
 -- ============================================================================
--- INTERFAZ: PANEL (sirve para la pestaña del hub y para la ventana propia)
+-- INTERFACE: PANEL (used both for the hub tab and for the own window)
 -- ============================================================================
-local ui = {}  -- referencias a los textos que se actualizan en vivo
+local ui = {}  -- references to the texts refreshed live
 
 local function CreateActionButton(parent, width, height, text, iconTexture, onClick)
     local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     btn:SetWidth(width or 130)
     btn:SetHeight(height or 28)
-    btn:SetText(text or "Abrir")
+    btn:SetText(text or T.BTN_DEFAULT)
     if iconTexture then
         local icon = btn:CreateTexture(nil, "OVERLAY")
         icon:SetWidth(height - 8)
@@ -280,23 +253,25 @@ function L:BuildPanel(p)
 
     local title = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", headerCard, "TOPLEFT", 10, -8)
-    title:SetText("Sistema Legacy")
+    title:SetText(T.PANEL_TITLE)
 
     ui.points = headerCard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     ui.points:SetPoint("BOTTOMLEFT", headerCard, "BOTTOMLEFT", 10, 8)
-    ui.points:SetText("Puntos Disponibles: |cff00ff00Cargando...|r")
+    ui.points:SetText(T.POINTS_LOADING)
 
-    local syncBtn = CreateActionButton(headerCard, 140, 26, "Sincronizar", ICON_MAIN, function() L:Sync() end)
+    local syncBtn = CreateActionButton(headerCard, 140, 26, T.BTN_SYNC, ICON_MAIN, function() L:Sync() end)
     syncBtn:SetPoint("RIGHT", headerCard, "RIGHT", -8, 0)
 
     local y = -62
     for _, tree in ipairs(L.TREES) do
+        local tt = TreeT(tree)
         local treeTitle = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         treeTitle:SetPoint("TOPLEFT", p, "TOPLEFT", 14, y)
-        treeTitle:SetText(tree.tabTitle)
+        treeTitle:SetText(tt.tabTitle)
         y = y - 18
 
         for nodeIdx, n in ipairs(tree.nodes) do
+            local nt = NodeT(tree, n)
             local row = CreateFrame("Frame", nil, p)
             row:SetWidth(536)
             row:SetHeight(32)
@@ -315,11 +290,11 @@ function L:BuildPanel(p)
 
             local nameLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-            nameLabel:SetText(n.name .. " |cff808080(" .. n.tabDesc .. ")|r")
+            nameLabel:SetText(n.name .. " |cff808080(" .. nt.tabDesc .. ")|r")
 
             local badge = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             badge:SetPoint("RIGHT", row, "RIGHT", -95, 0)
-            badge:SetText(n.locked and "|cff808080[Bloqueado]|r" or "|cffffd100Rango 0/3|r")
+            badge:SetText(n.locked and T.BADGE_LOCKED or T.BADGE_RANK0)
 
             ui.nodeRows[tree.idx .. "_" .. nodeIdx] = { badge = badge, locked = n.locked }
 
@@ -328,10 +303,10 @@ function L:BuildPanel(p)
                 buyBtn:SetWidth(85)
                 buyBtn:SetHeight(22)
                 buyBtn:SetPoint("RIGHT", row, "RIGHT", -6, 0)
-                buyBtn:SetText("+1 Rango")
+                buyBtn:SetText(T.BTN_BUY)
                 local cmd, nodeName = BuyCmd(tree, nodeIdx), n.name
                 buyBtn:SetScript("OnClick", function()
-                    L:Run(cmd, "¿Gastar punto(s) Legacy en mejorar " .. nodeName .. "?")
+                    L:Run(cmd, string.format(T.CONFIRM_BUY_FMT, nodeName))
                 end)
             end
 
@@ -340,19 +315,19 @@ function L:BuildPanel(p)
         y = y - 4
     end
 
-    local resetBtn = CreateActionButton(p, 250, 26, "Reiniciar Puntos Gastados",
+    local resetBtn = CreateActionButton(p, 250, 26, T.BTN_RESET,
         "Interface\\Icons\\Spell_Shadow_SacrificialShield", function()
-            L:Run(".legacy reset", "¿Estás seguro de que deseas reiniciar todos los puntos Legacy?")
+            L:Run(".legacy reset", T.CONFIRM_RESET)
         end)
     resetBtn:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 14, 10)
 
     L:Update()
 end
 
--- Refresca los textos con los datos actuales (si el panel aún no existe, no hace nada)
+-- Refresh the texts with the current data (no-op if the panel does not exist yet)
 function L:Update()
     if ui.points then
-        ui.points:SetText("Puntos Legacy de Cuenta Disponibles: |cff00ff00" .. (L.data.points or 0) .. " Punto(s)|r")
+        ui.points:SetText(string.format(T.POINTS_FMT, L.data.points or 0))
     end
     if not ui.nodeRows then return end
     for key, row in pairs(ui.nodeRows) do
@@ -360,56 +335,58 @@ function L:Update()
             local t, n = key:match("(%d+)_(%d+)")
             local rank = (L.data.ranks[tonumber(t)] and L.data.ranks[tonumber(t)][tonumber(n)]) or 0
             if rank >= 3 then
-                row.badge:SetText("|cff00ff00[Rango 3/3 MAX]|r")
+                row.badge:SetText(T.BADGE_MAX)
             else
-                row.badge:SetText("|cffffd100[Rango " .. rank .. "/3]|r |cff808080(Sig: " .. (rank + 1) .. " pt)|r")
+                row.badge:SetText(string.format(T.BADGE_RANK_FMT, rank, rank + 1))
             end
         end
     end
 end
 
 -- ============================================================================
--- MENÚ DESPLEGABLE DEL HUB (se genera desde L.TREES)
+-- HUB DROPDOWN MENU (generated from L.TREES)
 -- ============================================================================
 function L:BuildMenuCategory()
     local items = {
         {
-            id = "legacy_status", name = "Consultar Puntos Legacy",
-            desc = "Muestra en el chat tus puntos disponibles y rangos actuales.",
+            id = "legacy_status", name = T.MENU_STATUS_NAME,
+            desc = T.MENU_STATUS_DESC,
             icon = ICON_MAIN, cmd = ".legacy", enabled = true,
         },
     }
     for _, tree in ipairs(L.TREES) do
+        local tt = TreeT(tree)
         local subs = {}
         for nodeIdx, n in ipairs(tree.nodes) do
+            local nt = NodeT(tree, n)
             if n.locked then
-                subs[#subs + 1] = { id = n.id, name = n.menuName, desc = n.menuDesc, icon = n.icon,
+                subs[#subs + 1] = { id = n.id, name = nt.menuName, desc = nt.menuDesc, icon = n.icon,
                                     cmd = "", disabled = true, enabled = true }
             else
-                subs[#subs + 1] = { id = n.id, name = n.menuName, desc = n.menuDesc, icon = n.icon,
+                subs[#subs + 1] = { id = n.id, name = nt.menuName, desc = nt.menuDesc, icon = n.icon,
                                     cmd = BuyCmd(tree, nodeIdx),
-                                    confirm = "¿Gastar 1 punto Legacy en " .. n.name .. "?", enabled = true }
+                                    confirm = string.format(T.CONFIRM_MENU_BUY_FMT, n.name), enabled = true }
             end
         end
-        items[#items + 1] = { id = tree.id, name = tree.menuName, desc = tree.menuDesc, icon = tree.icon,
+        items[#items + 1] = { id = tree.id, name = tt.menuName, desc = tt.menuDesc, icon = tree.icon,
                               hasSubmenu = true, enabled = true, subitems = subs }
     end
     items[#items + 1] = {
-        id = "legacy_reset", name = "|cffff2020Reiniciar Puntos Legacy|r",
-        desc = "Devuelve todos los puntos gastados por este personaje al pozo de la cuenta.",
+        id = "legacy_reset", name = T.MENU_RESET_NAME,
+        desc = T.MENU_RESET_DESC,
         icon = "Interface\\Icons\\Spell_Shadow_SacrificialShield", cmd = ".legacy reset",
-        confirm = "¿Estás seguro de que deseas reiniciar (Refund) todos los nodos Legacy de este personaje?",
+        confirm = T.CONFIRM_MENU_RESET,
         enabled = true,
     }
     return {
-        id = "legacy", name = "Sistema Legacy", icon = ICON_MAIN,
-        tooltip = "Progresión ligada a la cuenta. Gasta puntos Legacy en 3 árboles de ventajas.",
+        id = "legacy", name = T.MENU_ROOT_NAME, icon = ICON_MAIN,
+        tooltip = T.MENU_ROOT_TOOLTIP,
         enabled = true, order = 3, items = items,
     }
 end
 
 -- ============================================================================
--- VENTANA PROPIA (/glegacy) - sirve con o sin el hub
+-- OWN WINDOW (/glegacy) - works with or without the hub
 -- ============================================================================
 function L:ToggleWindow()
     if not L.window then
@@ -433,7 +410,7 @@ function L:ToggleWindow()
 
         local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("TOP", f, "TOP", 0, -14)
-        title:SetText("|cff00ccffGlobalTools|r Legacy")
+        title:SetText(T.WINDOW_TITLE)
 
         local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
         close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -6)
@@ -462,20 +439,20 @@ SlashCmdList["GLOBALTOOLSLEGACY"] = function(msg)
     msg = msg and msg:lower():match("^%s*(.-)%s*$") or ""
     if msg == "sync" then
         L:Sync()
-        L:Print("Sincronizando puntos Legacy...")
+        L:Print(T.PRINT_SYNCING)
     elseif msg == "chat" then
         local db = DB()
         db.hideChat = not db.hideChat
-        L:Print("Ocultar respuestas del chat: " .. (db.hideChat and "|cff00ff00sí|r" or "|cffff2020no|r"))
+        L:Print(string.format(T.PRINT_HIDECHAT_FMT, db.hideChat and T.PRINT_YES or T.PRINT_NO))
     elseif msg == "help" or msg == "?" then
-        L:Print("Comandos: |cffffd100/glegacy|r abre la ventana, |cffffd100/glegacy sync|r sincroniza, |cffffd100/glegacy chat|r oculta/muestra las respuestas del chat.")
+        L:Print(T.PRINT_HELP)
     else
         L:ToggleWindow()
     end
 end
 
 -- ============================================================================
--- EVENTOS (también lee el chat por evento: el filtro solo corre si el mensaje se muestra)
+-- EVENTS (also reads chat via event: the filter only runs if the message shows)
 -- ============================================================================
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("ADDON_LOADED")
@@ -489,15 +466,15 @@ ev:SetScript("OnEvent", function(self, event, arg1)
 end)
 
 -- ============================================================================
--- REGISTRO EN EL HUB (si está instalado)
+-- HUB REGISTRATION (if installed)
 -- ============================================================================
 local GT = GlobalTools
 if GT and GT.RegisterModule then
     GT:RegisterModule({
         id = "legacy",
-        name = "Sistema Legacy",
+        name = T.HUB_MODULE_NAME,
         icon = ICON_MAIN,
-        slot = 3, -- posición de la pestaña en la barra lateral del hub
+        slot = 3, -- tab position in the hub sidebar
         tab = {
             build = function(parent) L:BuildPanel(parent) end,
             onSelect = function() L:Sync() end,
@@ -505,6 +482,6 @@ if GT and GT.RegisterModule then
         },
         category = L:BuildMenuCategory(),
         sync = function() L:Sync() end,
-        help = { "|cffffd100/glegacy|r - Abre la ventana propia de Legacy" },
+        help = { T.HUB_HELP },
     })
 end

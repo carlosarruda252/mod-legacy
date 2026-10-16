@@ -1,9 +1,0 @@
-## Interface: 30300
-## Title: |cff00ccffGlobalTools|r |cffffd100Legacy|r
-## Notes: Sistema Legacy (mod-legacy) como addon individual. Se integra al hub GlobalTools si esta instalado; sin el hub usa /glegacy.
-## Author: Yluyan / Carlos
-## Version: 1.0.0
-## OptionalDeps: GlobalTools
-## SavedVariables: GlobalToolsLegacyDB
-
-Legacy.lua
